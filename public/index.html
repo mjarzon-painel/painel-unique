@@ -22,6 +22,9 @@
     border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;outline:none}
   select option{color:#111}
   .status{display:flex;align-items:center;gap:8px;font-size:12px;opacity:.95}
+  #customRange input[type=date]{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:6px 8px;font-family:inherit;font-size:13px;color-scheme:dark}
+  #applyRange{background:#fff;color:#1f5fd6;border:0;border-radius:8px;padding:7px 12px;font-weight:700;font-size:13px;font-family:inherit;cursor:pointer}
+  #applyRange:hover{background:#e8eefc}
   .logout{color:#fff;text-decoration:none;font-size:12px;font-weight:600;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);padding:8px 12px;border-radius:10px}
   .logout:hover{background:rgba(255,255,255,.28)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--verde);box-shadow:0 0 0 0 rgba(46,204,113,.6);animation:pulse 2s infinite}
@@ -67,12 +70,20 @@
     <select id="account"></select>
     <select id="preset">
       <option value="today">Hoje</option>
+      <option value="yesterday">Ontem</option>
       <option value="last_7d" selected>Últimos 7 dias</option>
       <option value="last_14d">Últimos 14 dias</option>
       <option value="last_30d">Últimos 30 dias</option>
       <option value="this_month">Este mês</option>
       <option value="last_month">Mês passado</option>
+      <option value="custom">Personalizado…</option>
     </select>
+    <span id="customRange" style="display:none;align-items:center;gap:6px">
+      <input type="date" id="since" title="Data inicial"/>
+      <span style="opacity:.6">até</span>
+      <input type="date" id="until" title="Data final"/>
+      <button id="applyRange" type="button">Aplicar</button>
+    </span>
     <div class="status"><span class="dot"></span><span id="lastUpd">conectando…</span></div>
     <a class="logout" href="/logout" title="Sair">⎋ Sair</a>
   </div>
@@ -150,7 +161,7 @@ function renderKpis(o){
     {cls:'lead', lbl:'Leads (total)', val:fmtNum(o.leads.total), sub:`${fmtNum(o.leads.conversas)} conversas · ${fmtNum(o.leads.leadsForm)} formulário`},
     {cls:'cpl', lbl:'Custo por lead', val:o.leads.total? fmtBRL(o.cpl):'—', sub:'gasto ÷ leads'},
     {cls:'', lbl:'Conexões de msg', val:fmtNum(o.leads.conexoes), sub:'conversas conectadas'},
-    {cls:'', lbl:'Impressões', val:fmtNum(o.impressions), sub:`alcance ${fmtNum(o.reach)}`},
+    {cls:'', lbl:'Impressões', val:fmtNum(o.impressions), sub:'no período'},
     {cls:'', lbl:'Cliques', val:fmtNum(o.clicks), sub:`CTR ${fmtPct(o.ctr)} · CPC ${fmtBRL(o.cpc)}`},
   ];
   $('kpis').innerHTML = cards.map(c=>`
@@ -197,21 +208,32 @@ function renderCampaigns(list){
     </tr>`).join('');
 }
 
+// Monta a query de periodo: preset normal OU intervalo personalizado (since/until)
+function periodQuery(){
+  const preset = $('preset').value;
+  if(preset === 'custom'){
+    const since = $('since').value, until = $('until').value;
+    if(!since || !until) return null;            // datas incompletas
+    if(since > until) return null;               // intervalo invalido
+    return `&since=${since}&until=${until}`;
+  }
+  return `&preset=${preset}`;
+}
+
 async function refresh(){
   const account = $('account').value;
-  const preset = $('preset').value;
   if(!account) return;
-  const q = `?account=${encodeURIComponent(account)}&preset=${preset}`;
+  const pq = periodQuery();
+  if(pq === null){ $('lastUpd').textContent = 'escolha as duas datas'; return; }
   try{
-    const [ov, camps] = await Promise.all([
-      api('/api/overview'+q),
-      api('/api/campaigns'+q),
-    ]);
+    const camps = await api(`/api/campaigns?account=${encodeURIComponent(account)}${pq}`);
     showError('');
-    renderKpis(ov);
+    renderKpis(camps.totals);
     renderCampaigns(camps.campaigns);
+    const ex = camps.totals.excluidas;
     const now = new Date();
-    $('lastUpd').textContent = 'atualizado ' + now.toLocaleTimeString('pt-BR');
+    $('lastUpd').textContent = 'atualizado ' + now.toLocaleTimeString('pt-BR') +
+      (ex ? ` · ${ex} arquivada${ex>1?'s':''} fora da contagem` : '');
   }catch(e){
     showError(e.message);
     $('lastUpd').textContent = 'erro ao atualizar';
@@ -221,8 +243,23 @@ async function refresh(){
 let timer;
 function schedule(){ clearInterval(timer); timer = setInterval(refresh, REFRESH_MS); }
 
+// Mostra/esconde os campos de data quando escolhe "Personalizado"
+const isoDay = (d)=> d.toISOString().slice(0,10);
+$('preset').addEventListener('change', ()=>{
+  const custom = $('preset').value === 'custom';
+  $('customRange').style.display = custom ? 'inline-flex' : 'none';
+  if(custom){
+    // pre-preenche com os ultimos 7 dias se ainda estiver vazio
+    if(!$('until').value){ const hoje=new Date(); $('until').value = isoDay(hoje); }
+    if(!$('since').value){ const d=new Date(); d.setDate(d.getDate()-7); $('since').value = isoDay(d); }
+    $('until').max = isoDay(new Date());   // nao deixa escolher futuro
+    $('since').max = isoDay(new Date());
+  } else {
+    refresh();                    // presets atualizam na hora; custom espera "Aplicar"
+  }
+});
+$('applyRange').addEventListener('click', refresh);
 $('account').addEventListener('change', refresh);
-$('preset').addEventListener('change', refresh);
 
 (async function init(){
   try{ await loadAccounts(); }

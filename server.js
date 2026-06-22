@@ -190,6 +190,23 @@ function safePreset(p) {
   return PRESETS.has(p) ? p : "last_7d";
 }
 
+// Aceita ?since=YYYY-MM-DD&until=YYYY-MM-DD (intervalo personalizado) ou ?preset=...
+function isDate(s) {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+function dateExpr(req) {
+  const since = req.query.since;
+  const until = req.query.until;
+  if (isDate(since) && isDate(until)) {
+    const tr = encodeURIComponent(JSON.stringify({ since, until }));
+    return { param: `time_range=${tr}`, period: { start: since, stop: until } };
+  }
+  return { param: `date_preset=${safePreset(req.query.preset)}`, period: null };
+}
+
+// Status que NAO entram na contagem (campanhas arquivadas/excluidas)
+const STATUS_FORA = new Set(["ARCHIVED", "DELETED"]);
+
 // =================== ENDPOINTS ===================
 
 // Lista de contas de anuncio
@@ -228,7 +245,7 @@ app.get("/api/overview", async (req, res) => {
 app.get("/api/campaigns", async (req, res) => {
   try {
     const account = req.query.account || DEFAULT_ACCOUNT;
-    const preset = safePreset(req.query.preset);
+    const { param, period: customPeriod } = dateExpr(req);
 
     // 1) status + orcamento das campanhas
     const camps = await graph(
@@ -252,10 +269,12 @@ app.get("/api/campaigns", async (req, res) => {
 
     // 2) insights por campanha (uma chamada so)
     const ins = await graph(
-      `${account}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,actions&date_preset=${preset}&limit=200`
+      `${account}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,actions&${param}&limit=200`
     );
+    let period = customPeriod;
     const orfas = [];
     for (const row of ins.data || []) {
+      if (!period && row.date_start) period = { start: row.date_start, stop: row.date_stop };
       const id = row.campaign_id;
       let target = byId[id];
       if (!target) {
@@ -266,6 +285,9 @@ app.get("/api/campaigns", async (req, res) => {
       target.spend = s.spend;
       target.impressions = s.impressions;
       target.clicks = s.clicks;
+      target.conversas = s.leads.conversas;
+      target.conexoes = s.leads.conexoes;
+      target.leadsForm = s.leads.leadsForm;
       target.leads = s.leads.total;
       target.cpl = s.cpl;
     }
@@ -287,8 +309,38 @@ app.get("/api/campaigns", async (req, res) => {
       })
     );
 
-    const list = Object.values(byId).sort((a, b) => b.spend - a.spend);
-    res.json({ campaigns: list });
+    // Exclui arquivadas/excluidas da lista E da contagem
+    const list = Object.values(byId)
+      .filter((c) => !STATUS_FORA.has(c.status))
+      .sort((a, b) => b.spend - a.spend);
+
+    // Totais (KPIs) calculados so com as campanhas que entram na contagem
+    const t = list.reduce(
+      (a, c) => {
+        a.spend += c.spend || 0;
+        a.impressions += c.impressions || 0;
+        a.clicks += c.clicks || 0;
+        a.conversas += c.conversas || 0;
+        a.conexoes += c.conexoes || 0;
+        a.leadsForm += c.leadsForm || 0;
+        return a;
+      },
+      { spend: 0, impressions: 0, clicks: 0, conversas: 0, conexoes: 0, leadsForm: 0 }
+    );
+    const leadsTotal = t.conversas + t.leadsForm;
+    const totals = {
+      spend: t.spend,
+      impressions: t.impressions,
+      clicks: t.clicks,
+      ctr: t.impressions ? (t.clicks / t.impressions) * 100 : 0,
+      cpc: t.clicks ? t.spend / t.clicks : 0,
+      cpl: leadsTotal ? t.spend / leadsTotal : 0,
+      leads: { total: leadsTotal, conversas: t.conversas, conexoes: t.conexoes, leadsForm: t.leadsForm },
+      period: period || { start: null, stop: null },
+      excluidas: Object.values(byId).filter((c) => STATUS_FORA.has(c.status)).length,
+    };
+
+    res.json({ campaigns: list, totals });
   } catch (e) {
     res.status(500).json({ error: e.message, meta: e.meta });
   }
