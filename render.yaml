@@ -6,6 +6,7 @@ services:
     region: oregon
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /healthz
     envVars:
       - key: META_TOKEN
         sync: false            # voce define no painel do Render (nao fica no repo)

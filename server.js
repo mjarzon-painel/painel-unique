@@ -87,6 +87,9 @@ function safePreset(p) {
 // =================== ENDPOINTS ===================
 
 // Lista de contas de anuncio
+// Health check (usado pelo Render pra saber quando a instancia esta pronta)
+app.get("/healthz", (req, res) => res.status(200).send("ok"));
+
 app.get("/api/accounts", async (req, res) => {
   try {
     const data = await graph(
