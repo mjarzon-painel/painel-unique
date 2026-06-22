@@ -77,8 +77,9 @@ function loginPage(erro = "") {
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Montserrat',sans-serif;background:#0e1525;color:#e8eefc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
   .box{background:#16213a;border:1px solid #243556;border-radius:18px;padding:34px 30px;width:100%;max-width:360px}
-  .logo{font-size:22px;font-weight:800;text-align:center;margin-bottom:4px}
-  .logo small{display:block;font-size:11px;font-weight:600;color:#8ea2c7;letter-spacing:1px;margin-top:4px}
+  .logo{text-align:center;margin-bottom:6px}
+  .logo img{width:150px;height:auto;display:block;margin:0 auto}
+  .logo small{display:block;font-size:11px;font-weight:600;color:#8ea2c7;letter-spacing:1.5px;margin-top:6px}
   label{display:block;font-size:12px;color:#8ea2c7;font-weight:600;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}
   input{width:100%;background:#0e1525;border:1px solid #243556;border-radius:10px;padding:12px 14px;color:#fff;font-size:15px;font-family:inherit;outline:none}
   input:focus{border-color:#3583FF}
@@ -87,7 +88,7 @@ function loginPage(erro = "") {
   .err{background:#3a1620;border:1px solid #7a2436;color:#ffb3c1;padding:10px 12px;border-radius:10px;font-size:13px;margin-top:18px;text-align:center}
 </style></head><body>
   <form class="box" method="POST" action="/login">
-    <div class="logo">📊 Painel de Campanhas<small>UNIQUE AUTOMÓVEIS</small></div>
+    <div class="logo"><img src="/logo.png" alt="Unique Automóveis"/><small>PAINEL DE CAMPANHAS</small></div>
     ${erro ? `<div class="err">${erro}</div>` : ""}
     <label>Usuário</label>
     <input name="user" autocomplete="username" autofocus required/>
@@ -127,7 +128,7 @@ app.get("/logout", (req, res) => {
 // Porteiro: tudo abaixo exige login (menos /healthz, /login, /logout, ja tratados acima)
 app.use((req, res, next) => {
   if (req.path === "/healthz") return next();
-  if (req.path === "/healthz") return next();
+  if (req.path === "/logo.png" || req.path === "/logo-icon.png") return next(); // assets do login
   if (isAuthed(req)) return next();
   if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Não autenticado" });
   return res.redirect("/login");
