@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: painel-unique
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: META_TOKEN
+        sync: false            # voce define no painel do Render (nao fica no repo)
+      - key: DEFAULT_ACCOUNT
+        value: act_1187119852516898
+      - key: GRAPH_VERSION
+        value: v21.0

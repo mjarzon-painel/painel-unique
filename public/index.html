@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Painel de Campanhas · Unique Automóveis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --azul:#3583FF; --azul-esc:#1f5fd6; --bg:#0e1525; --card:#16213a;
+    --card2:#1b2942; --txt:#e8eefc; --muted:#8ea2c7; --verde:#2ecc71;
+    --linha:#243556; --amarelo:#ffc24b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+  header{background:linear-gradient(120deg,var(--azul),var(--azul-esc));padding:20px 28px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
+  header h1{font-size:20px;font-weight:800;letter-spacing:.3px}
+  header h1 small{display:block;font-size:12px;font-weight:500;opacity:.85;letter-spacing:.5px}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  select{font-family:inherit;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);
+    border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;outline:none}
+  select option{color:#111}
+  .status{display:flex;align-items:center;gap:8px;font-size:12px;opacity:.95}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--verde);box-shadow:0 0 0 0 rgba(46,204,113,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,204,113,.6)}70%{box-shadow:0 0 0 8px rgba(46,204,113,0)}100%{box-shadow:0 0 0 0 rgba(46,204,113,0)}}
+  main{padding:24px 28px;max-width:1320px;margin:0 auto}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--linha);border-radius:16px;padding:18px 20px;position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--azul)}
+  .kpi.lead::before{background:var(--verde)} .kpi.cpl::before{background:var(--amarelo)}
+  .kpi .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:600}
+  .kpi .val{font-size:28px;font-weight:800;margin-top:8px;line-height:1.1}
+  .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
+  .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:24px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--linha);border-radius:16px;padding:18px 20px}
+  .panel h2{font-size:14px;font-weight:700;margin-bottom:14px;color:var(--txt)}
+  .panel h2 span{font-weight:500;color:var(--muted);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--linha)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tag{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px}
+  .tag.ACTIVE{background:rgba(46,204,113,.15);color:var(--verde)}
+  .tag.PAUSED{background:rgba(142,162,199,.15);color:var(--muted)}
+  .tag.ARCHIVED,.tag.DELETED{background:rgba(255,194,75,.15);color:var(--amarelo)}
+  .cname{font-weight:600;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .err{background:#3a1620;border:1px solid #7a2436;color:#ffb3c1;padding:14px 18px;border-radius:12px;margin-bottom:20px;font-size:13px}
+  .muted{color:var(--muted)}
+  .skeleton{color:var(--muted);font-size:13px;padding:20px;text-align:center}
+  .bars{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:6px}
+  .bar-row{display:flex;align-items:center;gap:12px}
+  .bar-name{flex:0 0 38%;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-track{flex:1;background:var(--card2);border-radius:8px;height:22px;position:relative;overflow:hidden}
+  .bar-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--azul),var(--azul-esc));border-radius:8px;min-width:2px}
+  .bar-val{flex:0 0 130px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+  .bar-val b{font-weight:700} .bar-val .lead{color:var(--verde);font-weight:600;margin-left:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 Painel de Campanhas <small>UNIQUE AUTOMÓVEIS · META ADS</small></h1>
+  <div class="controls">
+    <select id="account"></select>
+    <select id="preset">
+      <option value="today">Hoje</option>
+      <option value="last_7d" selected>Últimos 7 dias</option>
+      <option value="last_14d">Últimos 14 dias</option>
+      <option value="last_30d">Últimos 30 dias</option>
+      <option value="this_month">Este mês</option>
+      <option value="last_month">Mês passado</option>
+    </select>
+    <div class="status"><span class="dot"></span><span id="lastUpd">conectando…</span></div>
+  </div>
+</header>
+
+<main>
+  <div id="error"></div>
+
+  <div class="kpis" id="kpis">
+    <div class="skeleton">Carregando indicadores…</div>
+  </div>
+
+  <div class="panel" style="margin-bottom:24px">
+    <h2>Gasto por campanha <span>(R$ no período · maior em cima)</span></h2>
+    <div id="campSpendList" class="bars"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Campanhas <span id="campCount"></span></h2>
+    <div style="overflow-x:auto">
+      <table id="campTable">
+        <thead>
+          <tr>
+            <th>Campanha</th><th>Status</th>
+            <th class="num">Orçamento/dia</th>
+            <th class="num">Gasto</th>
+            <th class="num">Leads</th>
+            <th class="num">CPL</th>
+            <th class="num">Impressões</th>
+            <th class="num">Cliques</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="8" class="skeleton">Carregando campanhas…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const REFRESH_MS = 60000; // atualiza a cada 60s
+// Se a pagina nao estiver em http(s) (ex: aberta num preview/iframe), usa o servidor local.
+const API_BASE = location.origin.startsWith('http') ? '' : 'http://localhost:3000';
+const fmtBRL = (n)=> new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n||0);
+const fmtNum = (n)=> new Intl.NumberFormat('pt-BR').format(Math.round(n||0));
+const fmtPct = (n)=> (Number(n||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+
+const $ = (id)=>document.getElementById(id);
+
+function showError(msg){ $('error').innerHTML = msg ? `<div class="err">⚠️ ${msg}</div>` : ''; }
+
+async function api(pathq){
+  const r = await fetch(API_BASE + pathq);
+  const j = await r.json();
+  if(!r.ok || j.error) throw new Error(j.error || 'Erro ao consultar a API');
+  return j;
+}
+
+async function loadAccounts(){
+  const j = await api('/api/accounts');
+  const sel = $('account');
+  sel.innerHTML = '';
+  for(const a of j.accounts){
+    const o = document.createElement('option');
+    o.value = a.id;
+    o.textContent = a.name + (a.account_status!==1 ? ' (inativa)' : '');
+    if(a.id === j.default) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function renderKpis(o){
+  const cards = [
+    {cls:'', lbl:'Investimento', val:fmtBRL(o.spend), sub:`${o.period.start||''} → ${o.period.stop||''}`},
+    {cls:'lead', lbl:'Leads (total)', val:fmtNum(o.leads.total), sub:`${fmtNum(o.leads.conversas)} conversas · ${fmtNum(o.leads.leadsForm)} formulário`},
+    {cls:'cpl', lbl:'Custo por lead', val:o.leads.total? fmtBRL(o.cpl):'—', sub:'gasto ÷ leads'},
+    {cls:'', lbl:'Conexões de msg', val:fmtNum(o.leads.conexoes), sub:'conversas conectadas'},
+    {cls:'', lbl:'Impressões', val:fmtNum(o.impressions), sub:`alcance ${fmtNum(o.reach)}`},
+    {cls:'', lbl:'Cliques', val:fmtNum(o.clicks), sub:`CTR ${fmtPct(o.ctr)} · CPC ${fmtBRL(o.cpc)}`},
+  ];
+  $('kpis').innerHTML = cards.map(c=>`
+    <div class="kpi ${c.cls}">
+      <div class="lbl">${c.lbl}</div>
+      <div class="val">${c.val}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+function renderCampSpend(list){
+  // so campanhas com gasto > 0, ordenadas (maior em cima)
+  const data = list.filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
+  const max = data.length ? data[0].spend : 1;
+  const el = $('campSpendList');
+  if(!data.length){ el.innerHTML = '<div class="skeleton">Nenhum gasto no período.</div>'; return; }
+  el.innerHTML = data.map(c=>{
+    const pct = Math.max(2, (c.spend/max)*100);
+    return `<div class="bar-row" title="${c.name}">
+      <div class="bar-name">${c.name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <div class="bar-val"><b>${fmtBRL(c.spend)}</b><span class="lead">${fmtNum(c.leads)} leads</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderCampaigns(list){
+  renderCampSpend(list);
+  // so campanhas com gasto no periodo, ordenadas por gasto
+  const ativas = list.filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
+  $('campCount').textContent = `(${ativas.length})`;
+  const tb = $('campTable').querySelector('tbody');
+  if(!ativas.length){ tb.innerHTML = '<tr><td colspan="8" class="skeleton">Nenhuma campanha com gasto no período.</td></tr>'; return; }
+  tb.innerHTML = ativas.map(c=>`
+    <tr>
+      <td class="cname" title="${c.name}">${c.name}</td>
+      <td><span class="tag ${c.status}">${c.status}</span></td>
+      <td class="num">${c.daily_budget? fmtBRL(c.daily_budget): (c.lifetime_budget? fmtBRL(c.lifetime_budget)+' (total)':'—')}</td>
+      <td class="num">${fmtBRL(c.spend)}</td>
+      <td class="num"><b>${fmtNum(c.leads)}</b></td>
+      <td class="num">${c.leads? fmtBRL(c.cpl):'—'}</td>
+      <td class="num">${fmtNum(c.impressions)}</td>
+      <td class="num">${fmtNum(c.clicks)}</td>
+    </tr>`).join('');
+}
+
+async function refresh(){
+  const account = $('account').value;
+  const preset = $('preset').value;
+  if(!account) return;
+  const q = `?account=${encodeURIComponent(account)}&preset=${preset}`;
+  try{
+    const [ov, camps] = await Promise.all([
+      api('/api/overview'+q),
+      api('/api/campaigns'+q),
+    ]);
+    showError('');
+    renderKpis(ov);
+    renderCampaigns(camps.campaigns);
+    const now = new Date();
+    $('lastUpd').textContent = 'atualizado ' + now.toLocaleTimeString('pt-BR');
+  }catch(e){
+    showError(e.message);
+    $('lastUpd').textContent = 'erro ao atualizar';
+  }
+}
+
+let timer;
+function schedule(){ clearInterval(timer); timer = setInterval(refresh, REFRESH_MS); }
+
+$('account').addEventListener('change', refresh);
+$('preset').addEventListener('change', refresh);
+
+(async function init(){
+  try{ await loadAccounts(); }
+  catch(e){ showError(e.message); }
+  await refresh();
+  schedule();
+})();
+</script>
+</body>
+</html>
