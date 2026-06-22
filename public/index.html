@@ -58,6 +58,10 @@
   .err{background:#3a1620;border:1px solid #7a2436;color:#ffb3c1;padding:14px 18px;border-radius:12px;margin-bottom:20px;font-size:13px}
   .muted{color:var(--muted)}
   .skeleton{color:var(--muted);font-size:13px;padding:20px;text-align:center}
+  .ai-btn{float:right;background:var(--dourado);color:#0a1f3d;border:0;border-radius:8px;padding:8px 16px;font-weight:800;font-size:13px;font-family:inherit;cursor:pointer}
+  .ai-btn:hover{filter:brightness(1.07)} .ai-btn:disabled{opacity:.6;cursor:default}
+  .ai-box{font-size:14px;line-height:1.6;color:var(--txt);white-space:pre-wrap;margin-top:6px}
+  .ai-box b{color:var(--dourado)} .ai-box .ai-time{display:block;color:var(--muted);font-size:11px;margin-top:14px}
   .bars{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:6px}
   .bar-row{display:flex;align-items:center;gap:12px;padding:2px 8px}
   .bar-name{flex:0 0 38%;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -131,6 +135,13 @@
         <tbody><tr><td colspan="8" class="skeleton">Carregando campanhas…</td></tr></tbody>
       </table>
     </div>
+  </div>
+
+  <div class="panel" id="aiPanel" style="margin-top:24px">
+    <h2>🤖 Análise de IA <span>(custos, eficiência e projeção)</span>
+      <button id="btnAnalise" class="ai-btn">Gerar análise</button>
+    </h2>
+    <div id="analiseBox" class="ai-box">Clique em <b>“Gerar análise”</b> para a IA avaliar o investimento e projetar o mês.</div>
   </div>
 </main>
 
@@ -278,6 +289,30 @@ $('preset').addEventListener('change', ()=>{
 });
 $('applyRange').addEventListener('click', refresh);
 $('account').addEventListener('change', refresh);
+
+// ----- Analise de IA (sob demanda, no clique do botao) -----
+const escapeHtml = (s)=> s.replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+async function gerarAnalise(){
+  const account = $('account').value;
+  if(!account) return;
+  const pq = periodQuery();
+  if(pq === null){ $('analiseBox').textContent = 'Escolha as duas datas do período primeiro.'; return; }
+  const btn = $('btnAnalise');
+  btn.disabled = true; btn.textContent = 'Analisando…';
+  $('analiseBox').textContent = '⏳ A IA está analisando os números…';
+  try{
+    const j = await api(`/api/analise?account=${encodeURIComponent(account)}${pq}`);
+    // negrito **x** -> <b>, mantendo quebras de linha (white-space:pre-wrap)
+    const html = escapeHtml(j.analise).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    const quando = j.geradoEm ? new Date(j.geradoEm).toLocaleString('pt-BR') : '';
+    $('analiseBox').innerHTML = html + (quando ? `<span class="ai-time">Gerado em ${quando} · período atual do painel</span>` : '');
+  }catch(e){
+    $('analiseBox').textContent = '⚠️ ' + e.message;
+  }finally{
+    btn.disabled = false; btn.textContent = 'Gerar análise';
+  }
+}
+$('btnAnalise').addEventListener('click', gerarAnalise);
 
 (async function init(){
   try{ await loadAccounts(); }

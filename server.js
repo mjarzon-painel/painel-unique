@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import Anthropic from "@anthropic-ai/sdk";
 
 dotenv.config();
 
@@ -245,10 +246,9 @@ app.get("/api/overview", async (req, res) => {
   }
 });
 
-// Campanhas com desempenho no periodo
-app.get("/api/campaigns", async (req, res) => {
-  try {
-    const account = req.query.account || DEFAULT_ACCOUNT;
+// Coleta campanhas + totais (reutilizado pela rota e pela analise de IA)
+async function coletarCampanhas(account, req) {
+  {
     const { param, period: customPeriod } = dateExpr(req);
 
     // 1) status + orcamento das campanhas
@@ -344,9 +344,79 @@ app.get("/api/campaigns", async (req, res) => {
       excluidas: Object.values(byId).filter((c) => STATUS_FORA.has(c.status)).length,
     };
 
-    res.json({ campaigns: list, totals });
+    return { campaigns: list, totals };
+  }
+}
+
+app.get("/api/campaigns", async (req, res) => {
+  try {
+    const account = req.query.account || DEFAULT_ACCOUNT;
+    res.json(await coletarCampanhas(account, req));
   } catch (e) {
     res.status(500).json({ error: e.message, meta: e.meta });
+  }
+});
+
+// ===== Analise de IA (Claude) sobre custos, eficiencia e projecao =====
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const brl = (n) => "R$ " + Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+app.get("/api/analise", async (req, res) => {
+  try {
+    if (!anthropic) {
+      return res.status(503).json({ error: "Análise de IA não configurada. Defina ANTHROPIC_API_KEY no servidor." });
+    }
+    const account = req.query.account || DEFAULT_ACCOUNT;
+    const { campaigns, totals } = await coletarCampanhas(account, req);
+    const ativas = campaigns.filter((c) => c.spend > 0);
+    if (!ativas.length) {
+      return res.json({ analise: "Não há gastos no período selecionado para analisar.", geradoEm: null });
+    }
+
+    // dias do periodo (para projecao)
+    let dias = null;
+    if (totals.period?.start && totals.period?.stop) {
+      dias = Math.round((Date.parse(totals.period.stop) - Date.parse(totals.period.start)) / 864e5) + 1;
+    }
+
+    const linhas = ativas
+      .map((c) => `- ${c.name} [${c.status}]: gasto ${brl(c.spend)}, leads ${c.leads}, CPL ${c.leads ? brl(c.cpl) : "—"}`)
+      .join("\n");
+
+    const prompt = `Você é um analista de tráfego pago (Meta Ads) de uma concessionária de veículos (Unique Automóveis). Analise os números abaixo e responda em português, de forma direta e objetiva, para o DONO da loja (linguagem simples, sem jargão técnico).
+
+PERÍODO: ${totals.period?.start || "?"} a ${totals.period?.stop || "?"}${dias ? ` (${dias} dias)` : ""}
+TOTAIS (somente campanhas ativas no período):
+- Investimento: ${brl(totals.spend)}
+- Leads (conversas WhatsApp + formulário): ${totals.leads.total}
+- Custo por lead (CPL): ${totals.leads.total ? brl(totals.cpl) : "—"}
+- Impressões: ${totals.impressions} | Cliques: ${totals.clicks} | CTR: ${totals.ctr.toFixed(2)}%
+
+CAMPANHAS:
+${linhas}
+
+Responda EXATAMENTE com estas 3 seções curtas (use os títulos com emoji):
+
+💰 O investimento está bom?
+Avalie se o CPL está saudável para venda de carros (referência geral: CPL abaixo de ~R$25 é bom, R$25–50 ok, acima disso caro — ajuste o tom conforme os números). Diga em 2-3 frases se o dinheiro está sendo bem usado.
+
+⚠️ Onde melhorar
+Aponte 1 a 3 campanhas que estão gastando muito com poucos ou nenhum lead (CPL alto ou zero leads) e o que fazer (pausar, revisar criativo, etc). Seja específico citando o nome da campanha.
+
+📈 Projeção
+Com base no ritmo atual${dias ? ` (${dias} dias)` : ""}, projete quanto deve gastar e quantos leads deve gerar até o fim do mês. Mostre os números estimados.
+
+Seja conciso (máximo ~200 palavras no total). Não invente dados além dos fornecidos.`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-opus-4-8",
+      max_tokens: 1200,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const texto = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    res.json({ analise: texto, geradoEm: new Date().toISOString() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
