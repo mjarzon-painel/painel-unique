@@ -27,8 +27,8 @@ if (!TOKEN) {
 }
 
 // ================= LOGIN (usuario/senha) =================
-const PANEL_USER = process.env.PANEL_USER || "admin";
-const PANEL_PASS = process.env.PANEL_PASS || "unique2026";
+const PANEL_USER = (process.env.PANEL_USER || "admin").trim();
+const PANEL_PASS = (process.env.PANEL_PASS || "unique2026").trim();
 const SESSION_SECRET = process.env.SESSION_SECRET || "troque-este-segredo";
 const SESSION_DAYS = 7;
 const COOKIE = "painel_auth";
@@ -104,7 +104,8 @@ app.get("/login", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-  const { user, pass } = req.body || {};
+  const user = (req.body?.user || "").trim();
+  const pass = (req.body?.pass || "").trim();
   const okUser = user === PANEL_USER;
   const okPass = pass === PANEL_PASS;
   if (okUser && okPass) {
@@ -123,8 +124,21 @@ app.get("/logout", (req, res) => {
   res.redirect("/login");
 });
 
+// Diagnostico TEMPORARIO (so tamanhos, nao revela a senha) - REMOVER depois
+app.get("/_diag", (req, res) => {
+  res.json({
+    userLenRaw: (process.env.PANEL_USER || "").length,
+    userLenTrim: PANEL_USER.length,
+    passLenRaw: (process.env.PANEL_PASS || "").length,
+    passLenTrim: PANEL_PASS.length,
+    userOk: PANEL_USER === "unique",
+  });
+});
+
 // Porteiro: tudo abaixo exige login (menos /healthz, /login, /logout, ja tratados acima)
 app.use((req, res, next) => {
+  if (req.path === "/_diag") return next();
+  if (req.path === "/healthz") return next();
   if (req.path === "/healthz") return next();
   if (isAuthed(req)) return next();
   if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Não autenticado" });
