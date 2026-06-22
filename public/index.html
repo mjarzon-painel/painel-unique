@@ -61,6 +61,13 @@
   .bar-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--azul),var(--azul-esc));border-radius:8px;min-width:2px}
   .bar-val{flex:0 0 130px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
   .bar-val b{font-weight:700} .bar-val .lead{color:var(--verde);font-weight:600;margin-left:6px}
+  /* destaque (campanhas com "Marcelo" no nome) */
+  .bar-row.destaque{background:rgba(255,194,75,.10);border:1px solid rgba(255,194,75,.5);border-radius:10px;padding:6px 8px;margin:-2px 0}
+  .bar-row.destaque .bar-name{color:var(--amarelo)}
+  .badge-star{display:inline-block;background:var(--amarelo);color:#1a1300;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;margin-right:6px;vertical-align:middle}
+  tr.destaque{background:rgba(255,194,75,.10)}
+  tr.destaque td:first-child{box-shadow:inset 3px 0 0 var(--amarelo)}
+  tr.destaque .cname{color:var(--amarelo);font-weight:700}
 </style>
 </head>
 <body>
@@ -172,16 +179,22 @@ function renderKpis(o){
     </div>`).join('');
 }
 
+// Campanha em destaque: nome contem "Marcelo"
+const isDestaque = (name)=> /marcelo/i.test(name||'');
+// Ordena: destaque primeiro, depois por maior gasto
+const ordena = (a,b)=> (isDestaque(b.name)-isDestaque(a.name)) || (b.spend-a.spend);
+
 function renderCampSpend(list){
-  // so campanhas com gasto > 0, ordenadas (maior em cima)
-  const data = list.filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
-  const max = data.length ? data[0].spend : 1;
+  // so campanhas com gasto > 0; destaque no topo, resto por maior gasto
+  const data = list.filter(c=>c.spend>0).sort(ordena);
+  const max = data.reduce((m,c)=>Math.max(m,c.spend),1);
   const el = $('campSpendList');
   if(!data.length){ el.innerHTML = '<div class="skeleton">Nenhum gasto no período.</div>'; return; }
   el.innerHTML = data.map(c=>{
     const pct = Math.max(2, (c.spend/max)*100);
-    return `<div class="bar-row" title="${c.name}">
-      <div class="bar-name">${c.name}</div>
+    const d = isDestaque(c.name);
+    return `<div class="bar-row ${d?'destaque':''}" title="${c.name}">
+      <div class="bar-name">${d?'<span class="badge-star">★ MARCELO</span>':''}${c.name}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
       <div class="bar-val"><b>${fmtBRL(c.spend)}</b><span class="lead">${fmtNum(c.leads)} leads</span></div>
     </div>`;
@@ -190,14 +203,14 @@ function renderCampSpend(list){
 
 function renderCampaigns(list){
   renderCampSpend(list);
-  // so campanhas com gasto no periodo, ordenadas por gasto
-  const ativas = list.filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
+  // so campanhas com gasto no periodo; destaque no topo, resto por gasto
+  const ativas = list.filter(c=>c.spend>0).sort(ordena);
   $('campCount').textContent = `(${ativas.length})`;
   const tb = $('campTable').querySelector('tbody');
   if(!ativas.length){ tb.innerHTML = '<tr><td colspan="8" class="skeleton">Nenhuma campanha com gasto no período.</td></tr>'; return; }
   tb.innerHTML = ativas.map(c=>`
-    <tr>
-      <td class="cname" title="${c.name}">${c.name}</td>
+    <tr class="${isDestaque(c.name)?'destaque':''}">
+      <td class="cname" title="${c.name}">${isDestaque(c.name)?'<span class="badge-star">★ MARCELO</span> ':''}${c.name}</td>
       <td><span class="tag ${c.status}">${c.status}</span></td>
       <td class="num">${c.daily_budget? fmtBRL(c.daily_budget): (c.lifetime_budget? fmtBRL(c.lifetime_budget)+' (total)':'—')}</td>
       <td class="num">${fmtBRL(c.spend)}</td>
