@@ -124,20 +124,8 @@ app.get("/logout", (req, res) => {
   res.redirect("/login");
 });
 
-// Diagnostico TEMPORARIO (so tamanhos, nao revela a senha) - REMOVER depois
-app.get("/_diag", (req, res) => {
-  res.json({
-    userLenRaw: (process.env.PANEL_USER || "").length,
-    userLenTrim: PANEL_USER.length,
-    passLenRaw: (process.env.PANEL_PASS || "").length,
-    passLenTrim: PANEL_PASS.length,
-    userOk: PANEL_USER === "unique",
-  });
-});
-
 // Porteiro: tudo abaixo exige login (menos /healthz, /login, /logout, ja tratados acima)
 app.use((req, res, next) => {
-  if (req.path === "/_diag") return next();
   if (req.path === "/healthz") return next();
   if (req.path === "/healthz") return next();
   if (isAuthed(req)) return next();
