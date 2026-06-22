@@ -138,10 +138,10 @@
   </div>
 
   <div class="panel" id="aiPanel" style="margin-top:24px">
-    <h2>🤖 Análise de IA <span>(custos, eficiência e projeção)</span>
+    <h2>📊 Análise automática <span>(custos, eficiência e projeção)</span>
       <button id="btnAnalise" class="ai-btn">Gerar análise</button>
     </h2>
-    <div id="analiseBox" class="ai-box">Clique em <b>“Gerar análise”</b> para a IA avaliar o investimento e projetar o mês.</div>
+    <div id="analiseBox" class="ai-box">Clique em <b>“Gerar análise”</b> para avaliar se o investimento está bom e projetar o mês.</div>
   </div>
 </main>
 
@@ -299,7 +299,7 @@ async function gerarAnalise(){
   if(pq === null){ $('analiseBox').textContent = 'Escolha as duas datas do período primeiro.'; return; }
   const btn = $('btnAnalise');
   btn.disabled = true; btn.textContent = 'Analisando…';
-  $('analiseBox').textContent = '⏳ A IA está analisando os números…';
+  $('analiseBox').textContent = '⏳ Analisando os números…';
   try{
     const j = await api(`/api/analise?account=${encodeURIComponent(account)}${pq}`);
     // negrito **x** -> <b>, mantendo quebras de linha (white-space:pre-wrap)

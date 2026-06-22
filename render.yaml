@@ -14,8 +14,6 @@ services:
         value: act_1187119852516898
       - key: GRAPH_VERSION
         value: v21.0
-      - key: ANTHROPIC_API_KEY
-        sync: false            # opcional: habilita a "Análise de IA" (defina no Render)
       - key: PANEL_USER
         sync: false            # usuario de login (defina no Render)
       - key: PANEL_PASS

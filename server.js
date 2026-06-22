@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
 
 dotenv.config();
 
@@ -357,64 +356,68 @@ app.get("/api/campaigns", async (req, res) => {
   }
 });
 
-// ===== Analise de IA (Claude) sobre custos, eficiencia e projecao =====
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+// ===== Analise automatica (calculada no servidor, sem IA) =====
 const brl = (n) => "R$ " + Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const intBR = (n) => Number(Math.round(n || 0)).toLocaleString("pt-BR");
 
 app.get("/api/analise", async (req, res) => {
   try {
-    if (!anthropic) {
-      return res.status(503).json({ error: "Análise de IA não configurada. Defina ANTHROPIC_API_KEY no servidor." });
-    }
     const account = req.query.account || DEFAULT_ACCOUNT;
     const { campaigns, totals } = await coletarCampanhas(account, req);
     const ativas = campaigns.filter((c) => c.spend > 0);
     if (!ativas.length) {
-      return res.json({ analise: "Não há gastos no período selecionado para analisar.", geradoEm: null });
+      return res.json({ analise: "Não há gastos no período selecionado para analisar.", geradoEm: new Date().toISOString() });
     }
 
-    // dias do periodo (para projecao)
-    let dias = null;
+    const cpl = totals.cpl;
+    const leads = totals.leads.total;
+
+    // dias do periodo (para ritmo/projecao)
+    let dias = 1;
     if (totals.period?.start && totals.period?.stop) {
-      dias = Math.round((Date.parse(totals.period.stop) - Date.parse(totals.period.start)) / 864e5) + 1;
+      dias = Math.max(1, Math.round((Date.parse(totals.period.stop) - Date.parse(totals.period.start)) / 864e5) + 1);
     }
+    const gastoDia = totals.spend / dias;
+    const leadsDia = leads / dias;
 
-    const linhas = ativas
-      .map((c) => `- ${c.name} [${c.status}]: gasto ${brl(c.spend)}, leads ${c.leads}, CPL ${c.leads ? brl(c.cpl) : "—"}`)
-      .join("\n");
+    // ---- 1) O investimento esta bom? (faixas de CPL p/ lead de concessionaria) ----
+    let veredito, emoji;
+    if (leads === 0) { veredito = "ainda **não gerou leads** no período — atenção"; emoji = "🔴"; }
+    else if (cpl <= 15) { veredito = `está **excelente** (CPL de ${brl(cpl)})`; emoji = "🟢"; }
+    else if (cpl <= 25) { veredito = `está **bom** (CPL de ${brl(cpl)})`; emoji = "🟢"; }
+    else if (cpl <= 50) { veredito = `está **ok, com espaço pra melhorar** (CPL de ${brl(cpl)})`; emoji = "🟡"; }
+    else { veredito = `está **caro** (CPL de ${brl(cpl)}) — vale revisar`; emoji = "🔴"; }
 
-    const prompt = `Você é um analista de tráfego pago (Meta Ads) de uma concessionária de veículos (Unique Automóveis). Analise os números abaixo e responda em português, de forma direta e objetiva, para o DONO da loja (linguagem simples, sem jargão técnico).
+    const sec1 =
+      `💰 **O investimento está bom?**\n` +
+      `${emoji} No geral, o custo por lead ${veredito}. ` +
+      `Você investiu **${brl(totals.spend)}** e gerou **${intBR(leads)} leads** ` +
+      `(${intBR(totals.leads.conversas)} conversas no WhatsApp + ${intBR(totals.leads.leadsForm)} de formulário) em ${dias} dia${dias > 1 ? "s" : ""}. ` +
+      `Referência p/ carros: até R$25 por lead é bom, R$25–50 ok, acima disso caro.`;
 
-PERÍODO: ${totals.period?.start || "?"} a ${totals.period?.stop || "?"}${dias ? ` (${dias} dias)` : ""}
-TOTAIS (somente campanhas ativas no período):
-- Investimento: ${brl(totals.spend)}
-- Leads (conversas WhatsApp + formulário): ${totals.leads.total}
-- Custo por lead (CPL): ${totals.leads.total ? brl(totals.cpl) : "—"}
-- Impressões: ${totals.impressions} | Cliques: ${totals.clicks} | CTR: ${totals.ctr.toFixed(2)}%
+    // ---- 2) Onde melhorar: campanhas caras ou sem leads ----
+    const semLead = ativas.filter((c) => c.leads === 0).sort((a, b) => b.spend - a.spend);
+    const caras = ativas.filter((c) => c.leads > 0 && cpl > 0 && c.cpl > cpl * 2).sort((a, b) => b.cpl - a.cpl);
+    const alertas = [];
+    for (const c of semLead.slice(0, 3)) {
+      alertas.push(`• **${c.name}** gastou **${brl(c.spend)}** e **não trouxe lead** — considere pausar ou revisar o criativo/segmentação.`);
+    }
+    for (const c of caras.slice(0, 3)) {
+      alertas.push(`• **${c.name}** está com CPL alto (**${brl(c.cpl)}**, mais que o dobro da média) — vale revisar.`);
+    }
+    const sec2 =
+      `⚠️ **Onde melhorar**\n` +
+      (alertas.length ? alertas.join("\n") : "Nenhuma campanha gastando à toa — todas estão trazendo leads a um custo razoável. 👍");
 
-CAMPANHAS:
-${linhas}
+    // ---- 3) Projecao para um mes cheio (30 dias) no ritmo atual ----
+    const sec3 =
+      `📈 **Projeção (mês cheio, no ritmo atual)**\n` +
+      `Mantendo a média de **${brl(gastoDia)}/dia** e **${leadsDia.toFixed(1)} leads/dia**, em 30 dias seriam aproximadamente:\n` +
+      `• Investimento: **${brl(gastoDia * 30)}**\n` +
+      `• Leads: **~${intBR(leadsDia * 30)}**\n` +
+      `• Custo por lead estimado: **${leads ? brl(totals.spend / leads) : "—"}**`;
 
-Responda EXATAMENTE com estas 3 seções curtas (use os títulos com emoji):
-
-💰 O investimento está bom?
-Avalie se o CPL está saudável para venda de carros (referência geral: CPL abaixo de ~R$25 é bom, R$25–50 ok, acima disso caro — ajuste o tom conforme os números). Diga em 2-3 frases se o dinheiro está sendo bem usado.
-
-⚠️ Onde melhorar
-Aponte 1 a 3 campanhas que estão gastando muito com poucos ou nenhum lead (CPL alto ou zero leads) e o que fazer (pausar, revisar criativo, etc). Seja específico citando o nome da campanha.
-
-📈 Projeção
-Com base no ritmo atual${dias ? ` (${dias} dias)` : ""}, projete quanto deve gastar e quantos leads deve gerar até o fim do mês. Mostre os números estimados.
-
-Seja conciso (máximo ~200 palavras no total). Não invente dados além dos fornecidos.`;
-
-    const msg = await anthropic.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 1200,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const texto = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    res.json({ analise: texto, geradoEm: new Date().toISOString() });
+    res.json({ analise: [sec1, sec2, sec3].join("\n\n"), geradoEm: new Date().toISOString() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
