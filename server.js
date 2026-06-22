@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 dotenv.config();
@@ -24,6 +25,111 @@ if (!TOKEN) {
   console.error("ERRO: defina META_TOKEN no arquivo .env");
   process.exit(1);
 }
+
+// ================= LOGIN (usuario/senha) =================
+const PANEL_USER = process.env.PANEL_USER || "admin";
+const PANEL_PASS = process.env.PANEL_PASS || "unique2026";
+const SESSION_SECRET = process.env.SESSION_SECRET || "troque-este-segredo";
+const SESSION_DAYS = 7;
+const COOKIE = "painel_auth";
+
+app.use(express.urlencoded({ extended: false })); // ler dados do formulario de login
+
+// Cria um cookie assinado (HMAC) valido por SESSION_DAYS dias
+function signSession() {
+  const exp = Date.now() + SESSION_DAYS * 864e5;
+  const payload = `${PANEL_USER}.${exp}`;
+  const sig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+  return Buffer.from(`${payload}.${sig}`).toString("base64");
+}
+
+function validSession(raw) {
+  try {
+    const decoded = Buffer.from(raw, "base64").toString();
+    const i = decoded.lastIndexOf(".");
+    const payload = decoded.slice(0, i);
+    const sig = decoded.slice(i + 1);
+    const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    if (sig.length !== expected.length) return false;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+    const exp = Number(payload.split(".")[1]);
+    return Date.now() < exp;
+  } catch {
+    return false;
+  }
+}
+
+function isAuthed(req) {
+  const raw = (req.headers.cookie || "")
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(COOKIE + "="));
+  return raw ? validSession(raw.slice(COOKIE.length + 1)) : false;
+}
+
+// Pagina de login (HTML embutido, mesmo visual do painel)
+function loginPage(erro = "") {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Entrar · Painel Unique</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Montserrat',sans-serif;background:#0e1525;color:#e8eefc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .box{background:#16213a;border:1px solid #243556;border-radius:18px;padding:34px 30px;width:100%;max-width:360px}
+  .logo{font-size:22px;font-weight:800;text-align:center;margin-bottom:4px}
+  .logo small{display:block;font-size:11px;font-weight:600;color:#8ea2c7;letter-spacing:1px;margin-top:4px}
+  label{display:block;font-size:12px;color:#8ea2c7;font-weight:600;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+  input{width:100%;background:#0e1525;border:1px solid #243556;border-radius:10px;padding:12px 14px;color:#fff;font-size:15px;font-family:inherit;outline:none}
+  input:focus{border-color:#3583FF}
+  button{width:100%;margin-top:24px;background:#3583FF;color:#fff;border:0;border-radius:10px;padding:13px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+  button:hover{background:#1f5fd6}
+  .err{background:#3a1620;border:1px solid #7a2436;color:#ffb3c1;padding:10px 12px;border-radius:10px;font-size:13px;margin-top:18px;text-align:center}
+</style></head><body>
+  <form class="box" method="POST" action="/login">
+    <div class="logo">📊 Painel de Campanhas<small>UNIQUE AUTOMÓVEIS</small></div>
+    ${erro ? `<div class="err">${erro}</div>` : ""}
+    <label>Usuário</label>
+    <input name="user" autocomplete="username" autofocus required/>
+    <label>Senha</label>
+    <input name="pass" type="password" autocomplete="current-password" required/>
+    <button type="submit">Entrar</button>
+  </form>
+</body></html>`;
+}
+
+app.get("/login", (req, res) => {
+  if (isAuthed(req)) return res.redirect("/");
+  res.type("html").send(loginPage());
+});
+
+app.post("/login", (req, res) => {
+  const { user, pass } = req.body || {};
+  const okUser = user === PANEL_USER;
+  const okPass = pass === PANEL_PASS;
+  if (okUser && okPass) {
+    const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+    res.setHeader(
+      "Set-Cookie",
+      `${COOKIE}=${signSession()}; HttpOnly; Path=/; Max-Age=${SESSION_DAYS * 86400}; SameSite=Lax${secure}`
+    );
+    return res.redirect("/");
+  }
+  res.status(401).type("html").send(loginPage("Usuário ou senha incorretos."));
+});
+
+app.get("/logout", (req, res) => {
+  res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+  res.redirect("/login");
+});
+
+// Porteiro: tudo abaixo exige login (menos /healthz, /login, /logout, ja tratados acima)
+app.use((req, res, next) => {
+  if (req.path === "/healthz") return next();
+  if (isAuthed(req)) return next();
+  if (req.path.startsWith("/api/")) return res.status(401).json({ error: "Não autenticado" });
+  return res.redirect("/login");
+});
 
 // ---- Helper para chamar a Graph API ----
 async function graph(pathAndQuery) {

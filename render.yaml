@@ -14,3 +14,9 @@ services:
         value: act_1187119852516898
       - key: GRAPH_VERSION
         value: v21.0
+      - key: PANEL_USER
+        sync: false            # usuario de login (defina no Render)
+      - key: PANEL_PASS
+        sync: false            # senha de login (defina no Render)
+      - key: SESSION_SECRET
+        generateValue: true    # o Render gera um segredo aleatorio
